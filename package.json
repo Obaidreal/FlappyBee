@@ -1,0 +1,10 @@
+{
+  "name": "flappy-bee",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "@vercel/blob": "^2.0.0"
+  }
+}

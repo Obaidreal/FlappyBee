@@ -1,0 +1,405 @@
+<!-- Updated index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>Flappy Bee: Gensyn AI Edition</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #230800;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            position: relative;
+            touch-action: none;
+        }
+        #gameContainer {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            max-width: 100vw;
+            max-height: 100vh;
+        }
+        canvas {
+            border: 1px solid #fff;
+            background-color: #230800;
+            display: block;
+            max-width: 100%;
+            max-height: 100%;
+            touch-action: none;
+        }
+        #highscore {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: red;
+            font-size: 14px;
+            font-family: Arial, sans-serif;
+            z-index: 20;
+            text-align: center;
+            width: 400px;
+            word-wrap: break-word;
+        }
+        #logoImg {
+            position: absolute;
+            left: -9999px;
+            opacity: 0;
+        }
+        #nameInputOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(35, 8, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 30;
+            flex-direction: column;
+            touch-action: manipulation;
+        }
+        #nameInput {
+            padding: 10px;
+            font-size: 18px;
+            text-align: center;
+            background: transparent;
+            border: 2px solid #FAD7D1;
+            color: #FAD7D1;
+            font-family: Arial, sans-serif;
+            width: 80%;
+            max-width: 300px;
+        }
+        #submitButton {
+            margin-top: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background: #FAD7D1;
+            color: #230800;
+            border: none;
+            cursor: pointer;
+            font-family: Arial, sans-serif;
+            touch-action: manipulation;
+        }
+        @media (max-width: 480px) {
+            #highscore { font-size: 12px; width: 90%; }
+            #nameInput { font-size: 16px; padding: 8px; }
+            #submitButton { font-size: 14px; padding: 8px 16px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="highscore">High Score: 0 by Anonymous</div>
+        <img id="logoImg" src="logo.gif" alt="Animated Logo">
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+        <div id="nameInputOverlay">
+            <input type="text" id="nameInput" placeholder="Enter your name..." maxlength="15">
+            <button id="submitButton">Submit</button>
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const highscoreDiv = document.getElementById('highscore');
+    const nameOverlay = document.getElementById('nameInputOverlay');
+    const nameInput = document.getElementById('nameInput');
+    const submitButton = document.getElementById('submitButton');
+    const logoImg = document.getElementById('logoImg');
+
+    // Off-screen canvas for logo animation
+    const logoCanvas = document.createElement('canvas');
+    logoCanvas.width = 100;
+    logoCanvas.height = 100;
+    const logoCtx = logoCanvas.getContext('2d');
+
+    // Constants
+    const SCREEN_WIDTH = 400;
+    const SCREEN_HEIGHT = 600;
+    const GRAVITY = 0.5;
+    const JUMP_STRENGTH = -8;
+    const PIPE_WIDTH = 60;
+    const PIPE_GAP = 200;
+    const PIPE_SPEED = 3;
+    const FPS = 60;
+
+    // Colors
+    const BLACK = '#230800';
+    const WHITE = '#FFFFFF';
+    const YELLOW = '#FFFF00';
+    const PINK = '#FAD7D1';
+    const RED = '#FF0000';
+
+    // API endpoint (Vercel function)
+    const API_BASE = '/api';  // Updated for Vercel
+
+    // Load images
+    const beeImage = new Image();
+    beeImage.src = 'bee.png';
+
+    // Bee object
+    class Bee {
+        constructor() {
+            this.x = 50;
+            this.y = SCREEN_HEIGHT / 2;
+            this.velocity = 0;
+            this.radius = 20;
+        }
+
+        jump() { this.velocity = JUMP_STRENGTH; }
+        update() { this.velocity += GRAVITY; this.y += this.velocity; }
+        draw() {
+            if (beeImage.complete) ctx.drawImage(beeImage, this.x - 20, this.y - 20, 40, 40);
+            else {
+                ctx.fillStyle = YELLOW;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = WHITE;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(this.x - 15, this.y - 5); ctx.lineTo(this.x - 25, this.y - 15);
+                ctx.moveTo(this.x - 15, this.y + 5); ctx.lineTo(this.x - 25, this.y + 15);
+                ctx.stroke();
+            }
+        }
+        getRect() { return { x: this.x - 20, y: this.y - 20, width: 40, height: 40 }; }
+    }
+
+    // Pipe object
+    class Pipe {
+        constructor(x) {
+            this.x = x;
+            this.height = Math.random() * (SCREEN_HEIGHT - PIPE_GAP - 200) + 100;
+            this.passed = false;
+        }
+
+        update() { this.x -= PIPE_SPEED; }
+        draw() {
+            ctx.fillStyle = WHITE; ctx.fillRect(this.x, 0, PIPE_WIDTH, this.height);
+            ctx.fillStyle = PINK; ctx.fillRect(this.x, 0, PIPE_WIDTH, 20);
+            ctx.fillStyle = WHITE; ctx.fillRect(this.x, this.height + PIPE_GAP, PIPE_WIDTH, SCREEN_HEIGHT - this.height - PIPE_GAP);
+            ctx.fillStyle = PINK; ctx.fillRect(this.x, this.height + PIPE_GAP - 20, PIPE_WIDTH, 20);
+        }
+        getRects() {
+            return [
+                { x: this.x, y: 0, width: PIPE_WIDTH, height: this.height },
+                { x: this.x, y: this.height + PIPE_GAP, width: PIPE_WIDTH, height: SCREEN_HEIGHT - this.height - PIPE_GAP }
+            ];
+        }
+    }
+
+    // Load high score from API
+    async function loadHighscore() {
+        try {
+            const response = await fetch(`${API_BASE}/highscore`);
+            if (response.ok) {
+                const data = await response.json();
+                return { name: data.name || 'Anonymous', score: data.score || 0 };
+            }
+        } catch (e) {
+            console.error('Error loading highscore:', e);
+        }
+        return { name: 'Anonymous', score: 0 };
+    }
+
+    // Save high score to API
+    async function saveHighscore(name, score) {
+        try {
+            const response = await fetch(`${API_BASE}/highscore`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, score })
+            });
+            if (response.ok) console.log('Highscore saved');
+        } catch (e) {
+            console.error('Error saving highscore:', e);
+        }
+    }
+
+    // Draw text
+    function drawText(text, fontSize, color, x, y) {
+        ctx.fillStyle = color;
+        ctx.font = `${fontSize}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.fillText(text, x, y);
+    }
+
+    // Game variables
+    let bee = new Bee();
+    let pipes = [new Pipe(SCREEN_WIDTH + 100)];
+    let score = 0;
+    let highscoreName = 'Anonymous';
+    let highscore = 0;
+    let gameOver = false;
+    let startScreen = true;
+    let nameSubmission = false;
+    let frozenGameState = null;
+
+    // Load highscore on start
+    (async () => {
+        const { name, score: s } = await loadHighscore();
+        highscoreName = name;
+        highscore = s;
+        highscoreDiv.textContent = `High Score: ${highscore} by ${highscoreName}`;
+    })();
+
+    // Event listeners
+    canvas.addEventListener('click', () => {
+        if (startScreen) startScreen = false;
+        else if (!gameOver && !nameSubmission) bee.jump();
+        else if (gameOver && nameSubmission) {
+            const name = nameInput.value.trim() || 'Anonymous';
+            if (score > highscore) {
+                highscore = score;
+                highscoreName = name;
+                saveHighscore(name, highscore);
+                highscoreDiv.textContent = `High Score: ${highscore} by ${highscoreName}`;
+            }
+            nameSubmission = false;
+            nameOverlay.style.display = 'none';
+            nameInput.value = '';
+            frozenGameState = { bee: { x: bee.x, y: bee.y }, pipes: pipes.map(p => ({ x: p.x, height: p.height })), score };
+        } else if (gameOver) {
+            bee = new Bee();
+            pipes = [new Pipe(SCREEN_WIDTH + 100)];
+            score = 0;
+            gameOver = false;
+            frozenGameState = null;
+        }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === ' ') {
+            e.preventDefault();
+            if (startScreen) startScreen = false;
+            else if (!gameOver && !nameSubmission) bee.jump();
+            else if (gameOver && nameSubmission) {
+                const name = nameInput.value.trim() || 'Anonymous';
+                if (score > highscore) {
+                    highscore = score;
+                    highscoreName = name;
+                    saveHighscore(name, highscore);
+                    highscoreDiv.textContent = `High Score: ${highscore} by ${highscoreName}`;
+                }
+                nameSubmission = false;
+                nameOverlay.style.display = 'none';
+                nameInput.value = '';
+                frozenGameState = { bee: { x: bee.x, y: bee.y }, pipes: pipes.map(p => ({ x: p.x, height: p.height })), score };
+            } else if (gameOver) {
+                bee = new Bee();
+                pipes = [new Pipe(SCREEN_WIDTH + 100)];
+                score = 0;
+                gameOver = false;
+                frozenGameState = null;
+            }
+        }
+    });
+
+    submitButton.addEventListener('click', () => {
+        const name = nameInput.value.trim() || 'Anonymous';
+        if (score > highscore) {
+            highscore = score;
+            highscoreName = name;
+            saveHighscore(name, highscore);
+            highscoreDiv.textContent = `High Score: ${highscore} by ${highscoreName}`;
+        }
+        nameSubmission = false;
+        nameOverlay.style.display = 'none';
+        nameInput.value = '';
+        frozenGameState = { bee: { x: bee.x, y: bee.y }, pipes: pipes.map(p => ({ x: p.x, height: p.height })), score };
+    });
+
+    nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const name = nameInput.value.trim() || 'Anonymous';
+            if (score > highscore) {
+                highscore = score;
+                highscoreName = name;
+                saveHighscore(name, highscore);
+                highscoreDiv.textContent = `High Score: ${highscore} by ${highscoreName}`;
+            }
+            nameSubmission = false;
+            nameOverlay.style.display = 'none';
+            nameInput.value = '';
+            frozenGameState = { bee: { x: bee.x, y: bee.y }, pipes: pipes.map(p => ({ x: p.x, height: p.height })), score };
+        }
+    });
+
+    function gameLoop() {
+        ctx.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+        ctx.fillStyle = BLACK;
+        ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+        if (startScreen) {
+            if (logoImg.complete && logoImg.naturalHeight > 0) {
+                logoCtx.clearRect(0, 0, logoCanvas.width, logoCanvas.height);
+                logoCtx.drawImage(logoImg, 0, 0, logoCanvas.width, logoCanvas.height);
+                ctx.drawImage(logoCanvas, SCREEN_WIDTH / 2 - 50, SCREEN_HEIGHT / 2 - 150, 100, 100);
+            } else {
+                ctx.fillStyle = YELLOW;
+                ctx.beginPath();
+                ctx.arc(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 100, 50, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            drawText('Flappy Bee: Gensyn AI Edition', 24, PINK, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 20);
+            drawText('Tap the screen or press SPACE to start!', 16, WHITE, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 20);
+            drawText('Powered by boogyman', 14, PINK, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 50);
+            drawText('@gensynai - Train AI on the blockchain!', 14, WHITE, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 80);
+        } else if (nameSubmission) {
+            bee.draw();
+            pipes.forEach(pipe => pipe.draw());
+            drawText(`Models Trained: ${score}`, 24, WHITE, SCREEN_WIDTH / 2, 50);
+        } else if (gameOver) {
+            bee.draw();
+            pipes.forEach(pipe => pipe.draw());
+            drawText('Game Over!', 32, YELLOW, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 50);
+            drawText(`Final Score: ${score}`, 18, WHITE, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
+            drawText('Powered by boogyman', 14, PINK, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 30);
+            drawText('@gensynai', 14, WHITE, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 60);
+            drawText('Tap screen or press SPACE to restart', 16, PINK, SCREEN_WIDTH / 2, SCREEN_HEIGHT - 50);
+        } else {
+            bee.update();
+            bee.draw();
+            if (pipes[pipes.length - 1].x < SCREEN_WIDTH - 200) pipes.push(new Pipe(SCREEN_WIDTH));
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                pipes[i].update();
+                pipes[i].draw();
+                if (pipes[i].x + PIPE_WIDTH < 0) pipes.splice(i, 1);
+                if (!pipes[i].passed && pipes[i].x + PIPE_WIDTH < bee.x) {
+                    pipes[i].passed = true;
+                    score++;
+                }
+                const rects = pipes[i].getRects();
+                const beeRect = bee.getRect();
+                if (beeRect.y < 0 || beeRect.y + beeRect.height > SCREEN_HEIGHT ||
+                    (rects[0].x < beeRect.x + beeRect.width && rects[0].x + PIPE_WIDTH > beeRect.x &&
+                     rects[0].y < beeRect.y + beeRect.height && rects[0].y + rects[0].height > beeRect.y) ||
+                    (rects[1].x < beeRect.x + beeRect.width && rects[1].x + PIPE_WIDTH > beeRect.x &&
+                     rects[1].y < beeRect.y + beeRect.height && rects[1].y + rects[1].height > beeRect.y)) {
+                    gameOver = true;
+                    nameSubmission = true;
+                    nameOverlay.style.display = 'flex';
+                    nameInput.focus();
+                    frozenGameState = { bee: { x: bee.x, y: bee.y }, pipes: pipes.map(p => ({ x: p.x, height: p.height })), score };
+                }
+            }
+            drawText(`Models Trained: ${score}`, 24, WHITE, SCREEN_WIDTH / 2, 50);
+        }
+        requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+</script>
+</body>
+</html>

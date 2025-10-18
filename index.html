@@ -129,7 +129,7 @@
     const JUMP_STRENGTH = -8;
     const PIPE_WIDTH = 60;
     const PIPE_GAP = 200;
-    const PIPE_SPEED = 3;
+    //const PIPE_SPEED = 3;
     const FPS = 60;
 
     // Colors
@@ -183,7 +183,9 @@
             this.passed = false;
         }
 
-        update() { this.x -= PIPE_SPEED; }
+        update(speed = 3) {  // Default to 3
+    		this.x -= speed;
+	}
         draw() {
             ctx.fillStyle = WHITE; ctx.fillRect(this.x, 0, PIPE_WIDTH, this.height);
             ctx.fillStyle = PINK; ctx.fillRect(this.x, 0, PIPE_WIDTH, 20);
@@ -370,11 +372,15 @@
             drawText('Tap screen or press SPACE to restart', 16, PINK, SCREEN_WIDTH / 2, SCREEN_HEIGHT - 50);
         } else {
             bee.update();
-            bee.draw();
-            if (pipes[pipes.length - 1].x < SCREEN_WIDTH - 200) pipes.push(new Pipe(SCREEN_WIDTH));
+            bee.draw();   
+		const dynamicPipeSpeed = 3 + (score / 10) * 0.5;  // Increases slowly with score
+  
+            if (pipes[pipes.length - 1].x < SCREEN_WIDTH - 200) {
+	    pipes.push(new Pipe(SCREEN_WIDTH));
+	}
             for (let i = pipes.length - 1; i >= 0; i--) {
-                pipes[i].update();
-                pipes[i].draw();
+               pipes[i].update(dynamicPipeSpeed);  // Pass dynamic speed
+	    pipes[i].draw();
                 if (pipes[i].x + PIPE_WIDTH < 0) pipes.splice(i, 1);
                 if (!pipes[i].passed && pipes[i].x + PIPE_WIDTH < bee.x) {
                     pipes[i].passed = true;
